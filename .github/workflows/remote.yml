@@ -38,8 +38,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev
 
-      - name: Decode resume PDF from secret
-        run: echo "${{ secrets.RESUME_BASE64 }}" | base64 -d > resume.pdf
+      - name: Decrypt resume PDF
+        run: |
+          # Resume is committed as ArinBalyan.pdf.gpg
+          gpg --quiet --batch --yes --decrypt --passphrase="${{ secrets.RESUME_DECRYPT_PASS }}" --output resume.pdf ArinBalyan.pdf.gpg
 
       - name: Decode applicant context from secret
         run: |

@@ -439,7 +439,7 @@ New repository secret**. Add each of the following:
 
 | Secret Name | Value |
 |-------------|-------|
-| `RESUME_BASE64` | Base64 of your resume PDF (from step 2) |
+| `RESUME_DECRYPT_PASS` | Passphrase used to encrypt your resume |
 | `CONTEXT_BASE64` | Base64 of your `contexts/profile.md` (from step 2) |
 
 **Identity:**
@@ -523,17 +523,26 @@ times in `.github/workflows/onsite.yml` and `remote.yml`.
 
 #### How File Secrets Work
 
-The workflows automatically decode your base64 secrets into files before
-running:
+The workflows handle private files differently to keep them secure:
 
-```
-RESUME_BASE64  -->  decoded to  -->  resume.pdf (project root)
-CONTEXT_BASE64 -->  decoded to  -->  contexts/profile.md
-```
+1. **Resume (Large File):**
+   - You encrypt your resume locally using GPG:
+     ```bash
+     gpg --symmetric --cipher-algo AES256 ArinBalyan.pdf
+     ```
+   - Commit the encrypted `ArinBalyan.pdf.gpg` file to your repo.
+   - Store the passphrase as a GitHub Secret: `RESUME_DECRYPT_PASS`.
+   - The workflow decrypts it at runtime.
 
-This happens in a "Decode private files" step in each workflow. The decoded
-files exist only for the duration of the workflow run and are never stored in
-the repository.
+2. **Applicant Context (Text File):**
+   - Encode your `contexts/profile.md` to base64:
+     ```bash
+     base64 -w0 contexts/profile.md
+     ```
+   - Store the output as a GitHub Secret: `CONTEXT_BASE64`.
+   - The workflow decodes it to disk at runtime.
+
+These files exist only for the duration of the workflow run.
 
 ### Local Cron
 
