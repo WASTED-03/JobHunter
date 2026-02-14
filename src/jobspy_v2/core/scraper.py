@@ -1,8 +1,14 @@
-"""Job scraping with python-jobspy — smart param handling per board."""
+"""Job scraping with python-jobspy — smart param handling per board.
+
+Uses ``concurrent.futures.ThreadPoolExecutor`` to scrape multiple
+board×location×term combinations in parallel (I/O-bound HTTP calls).
+The ``SCRAPE_MAX_WORKERS`` env var (default 5) controls concurrency.
+"""
 
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -99,13 +105,29 @@ def _should_reject_title(title: str | None, reject_patterns: list[str]) -> bool:
     return any(pattern.lower() in title_lower for pattern in reject_patterns)
 
 
+def _scrape_single(
+    params: dict, board: str, location: str, term: str
+) -> pd.DataFrame | None:
+    """Execute a single jobspy scrape call (designed to run in a thread)."""
+    logger.info("Scraping %s | location=%s | term='%s'", board, location, term)
+    try:
+        df = jobspy_scrape(**params)
+        if df is not None and not df.empty:
+            logger.info("  → %d results from %s", len(df), board)
+            return df
+        logger.info("  → 0 results from %s", board)
+    except Exception:
+        logger.exception("  → Error scraping %s for '%s' in %s", board, term, location)
+    return None
+
+
 def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
     """
     Scrape jobs for the given mode (onsite/remote).
 
     Pipeline:
-    1. Iterate locations × search_terms × boards
-    2. Call jobspy per combination
+    1. Build param combos for locations × search_terms × boards
+    2. Dispatch all combos to a ThreadPoolExecutor (parallel I/O)
     3. Filter: has valid email → reject titles → filter emails → dedup by job_url
     """
     prefix = mode.lower()
@@ -119,9 +141,9 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
         locations = [settings.remote_location]
 
     base_params = _build_base_params(settings, mode)
-    all_frames: list[pd.DataFrame] = []
-    boards_queried: list[str] = []
 
+    # ── Build all param combinations ───────────────────────────────────
+    tasks: list[tuple[dict, str, str, str]] = []
     for location in locations:
         for term in search_terms:
             for board in boards:
@@ -130,29 +152,32 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
                 )
                 params["site_name"] = [board]
                 params["location"] = location
+                tasks.append((params, board, location, term))
 
-                logger.info(
-                    "Scraping %s | location=%s | term='%s'",
-                    board,
-                    location,
-                    term,
-                )
-                try:
-                    df = jobspy_scrape(**params)
-                    if df is not None and not df.empty:
-                        all_frames.append(df)
-                        if board not in boards_queried:
-                            boards_queried.append(board)
-                        logger.info("  → %d results from %s", len(df), board)
-                    else:
-                        logger.info("  → 0 results from %s", board)
-                except Exception:
-                    logger.exception(
-                        "  → Error scraping %s for '%s' in %s",
-                        board,
-                        term,
-                        location,
-                    )
+    # ── Parallel scraping ──────────────────────────────────────────────
+    all_frames: list[pd.DataFrame] = []
+    boards_queried: list[str] = []
+    max_workers = min(settings.scrape_max_workers, len(tasks)) if tasks else 1
+
+    logger.info(
+        "Dispatching %d scrape tasks across %d workers", len(tasks), max_workers
+    )
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        future_to_board = {
+            pool.submit(_scrape_single, params, board, loc, term): board
+            for params, board, loc, term in tasks
+        }
+        for future in as_completed(future_to_board):
+            board = future_to_board[future]
+            try:
+                df = future.result()
+                if df is not None:
+                    all_frames.append(df)
+                    if board not in boards_queried:
+                        boards_queried.append(board)
+            except Exception:
+                logger.exception("Unexpected error collecting result for %s", board)
 
     if not all_frames:
         logger.warning("No jobs found across any board/location/term combo")

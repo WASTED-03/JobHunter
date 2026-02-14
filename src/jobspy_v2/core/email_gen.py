@@ -48,11 +48,16 @@ def generate_email(
     company: str,
     job_description: str,
     settings: Settings,
+    context: str = "",
 ) -> EmailResult:
     """
     Generate a personalised cold email for a job posting.
 
     Tries LLM first (if mode=llm), falls back to template on failure.
+
+    Args:
+        context: Pre-loaded applicant profile text. When empty, the LLM path
+                 loads it from ``settings.context_file_path`` as a fallback.
     """
     if settings.email_generator_mode == "fallback":
         return _generate_fallback(
@@ -67,6 +72,7 @@ def generate_email(
             company=company,
             job_description=job_description,
             settings=settings,
+            context=context,
         )
     except Exception:
         logger.exception("LLM generation failed, using fallback")
@@ -83,10 +89,11 @@ def _generate_with_llm(
     company: str,
     job_description: str,
     settings: Settings,
+    context: str = "",
 ) -> EmailResult:
     """Generate email via OpenRouter LLM."""
-    # Load applicant context
-    context_text = _load_context(settings.context_file_path)
+    # Use pre-loaded context if provided, otherwise load from file
+    context_text = context if context else _load_context(settings.context_file_path)
 
     # Extract keywords from job description
     keywords = extract_keywords(
