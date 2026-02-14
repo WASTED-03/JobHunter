@@ -50,6 +50,7 @@ def _build_base_params(settings: Settings, mode: str) -> dict:
     params: dict = {
         "results_wanted": getattr(settings, f"{prefix}_results_wanted"),
         "country_indeed": getattr(settings, f"{prefix}_country_indeed"),
+        "linkedin_fetch_description": True,
         "verbose": 2,
     }
 

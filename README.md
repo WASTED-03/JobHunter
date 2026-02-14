@@ -408,8 +408,8 @@ guidelines on how to get started, submit issues, and open pull requests.
 
 ## Credits
 
-- [python-jobspy](https://github.com/Bunsly/JobSpy) by
-  [Bunsly](https://github.com/Bunsly) -- the multi-board job scraping engine
+- [python-jobspy](https://github.com/SpeedyApply/JobSpy) by
+  [SpeedyApply](https://github.com/SpeedyApply) -- the multi-board job scraping engine
   that powers JobHunter's data collection
 - [OpenRouter](https://openrouter.ai/) -- LLM API gateway used for email
   generation
