@@ -26,7 +26,7 @@ class TestColumnSchemas:
     """Verify column tuple definitions are correct."""
 
     def test_sent_email_columns_count(self) -> None:
-        assert len(SENT_EMAIL_COLUMNS) == 8
+        assert len(SENT_EMAIL_COLUMNS) == 12
 
     def test_sent_email_columns_has_email(self) -> None:
         assert "email" in SENT_EMAIL_COLUMNS
@@ -35,13 +35,13 @@ class TestColumnSchemas:
         assert "date_sent" in SENT_EMAIL_COLUMNS
 
     def test_scraped_job_columns_count(self) -> None:
-        assert len(SCRAPED_JOB_COLUMNS) == 8
+        assert len(SCRAPED_JOB_COLUMNS) == 22
 
     def test_scraped_job_columns_has_title(self) -> None:
         assert "title" in SCRAPED_JOB_COLUMNS
 
     def test_run_stats_columns_count(self) -> None:
-        assert len(RUN_STATS_COLUMNS) == 7
+        assert len(RUN_STATS_COLUMNS) == 15
 
     def test_run_stats_columns_has_mode(self) -> None:
         assert "mode" in RUN_STATS_COLUMNS
@@ -73,6 +73,10 @@ def sample_sent_email() -> dict[str, str]:
         "job_url": "https://example.com/job/1",
         "location": "Bengaluru",
         "is_remote": "false",
+        "subject": "Application for ML Engineer",
+        "body_preview": "I am interested in the ML Engineer role...",
+        "mode": "fallback",
+        "word_count": "150",
     }
 
 
@@ -80,24 +84,52 @@ def sample_sent_email() -> dict[str, str]:
 def sample_scraped_jobs() -> list[dict[str, str]]:
     return [
         {
-            "title": "Backend Developer",
-            "company": "Acme Corp",
-            "location": "Remote",
-            "job_url": "https://acme.com/job/1",
-            "email": "jobs@acme.com",
             "date_scraped": "2026-02-14",
             "board": "indeed",
+            "title": "Backend Developer",
+            "company": "Acme Corp",
+            "company_url": "https://acme.com",
+            "location": "Remote",
             "is_remote": "true",
+            "job_url": "https://acme.com/job/1",
+            "job_type": "fulltime",
+            "date_posted": "2026-02-13",
+            "emails": "jobs@acme.com",
+            "salary_min": "80000",
+            "salary_max": "120000",
+            "salary_currency": "INR",
+            "salary_interval": "yearly",
+            "skills": "Python, Django",
+            "experience_range": "2-5",
+            "job_level": "mid",
+            "company_industry": "Technology",
+            "email_sent": "Pending",
+            "skip_reason": "",
+            "email_recipient": "",
         },
         {
-            "title": "Data Scientist",
-            "company": "DataCo",
-            "location": "Hyderabad",
-            "job_url": "https://dataco.com/job/2",
-            "email": "careers@dataco.com",
             "date_scraped": "2026-02-14",
             "board": "linkedin",
+            "title": "Data Scientist",
+            "company": "DataCo",
+            "company_url": "https://dataco.com",
+            "location": "Hyderabad",
             "is_remote": "false",
+            "job_url": "https://dataco.com/job/2",
+            "job_type": "fulltime",
+            "date_posted": "2026-02-12",
+            "emails": "careers@dataco.com",
+            "salary_min": "",
+            "salary_max": "",
+            "salary_currency": "",
+            "salary_interval": "",
+            "skills": "ML, Python",
+            "experience_range": "3-7",
+            "job_level": "senior",
+            "company_industry": "Data Analytics",
+            "email_sent": "Pending",
+            "skip_reason": "",
+            "email_recipient": "",
         },
     ]
 
@@ -108,10 +140,18 @@ def sample_run_stats() -> dict[str, str]:
         "date": "2026-02-14",
         "mode": "onsite",
         "total_scraped": "150",
-        "emails_found": "42",
+        "jobs_with_emails": "42",
         "emails_sent": "38",
         "emails_failed": "4",
+        "skipped_dedup_exact": "2",
+        "skipped_dedup_domain": "1",
+        "skipped_dedup_company": "0",
+        "skipped_no_recipients": "3",
+        "filtered_title": "10",
+        "filtered_email": "5",
+        "boards_queried": "indeed,linkedin",
         "duration_seconds": "345",
+        "dry_run": "False",
     }
 
 
@@ -213,8 +253,63 @@ class TestCsvBackendScrapedJobs:
         assert len(rows) == 2
 
     def test_empty_batch_is_noop(self, csv_backend: CsvBackend, tmp_path: Path) -> None:
-        csv_backend.add_scraped_jobs([])
-        assert not (tmp_path / "scraped_jobs.csv").exists()
+        start_row = csv_backend.add_scraped_jobs([])
+        assert isinstance(start_row, int)
+        # File may be created with headers, but no data rows
+        csv_path = tmp_path / "scraped_jobs.csv"
+        if csv_path.exists():
+            with csv_path.open() as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            assert len(rows) == 0
+
+
+class TestCsvBackendScrapedJobsUpdate:
+    """Test scraped job status update operations."""
+
+    def test_add_scraped_jobs_returns_start_row(
+        self,
+        csv_backend: CsvBackend,
+        sample_scraped_jobs: list[dict[str, str]],
+    ) -> None:
+        start_row = csv_backend.add_scraped_jobs(sample_scraped_jobs)
+        assert isinstance(start_row, int)
+        assert start_row == 2  # Row 1 is header, data starts at row 2
+
+    def test_update_scraped_job_status(
+        self,
+        csv_backend: CsvBackend,
+        sample_scraped_jobs: list[dict[str, str]],
+        tmp_path: Path,
+    ) -> None:
+        start_row = csv_backend.add_scraped_jobs(sample_scraped_jobs)
+        csv_backend.update_scraped_job_status(
+            row_number=start_row,
+            email_sent="Yes",
+            skip_reason="",
+            email_recipient="jobs@acme.com",
+        )
+        with (tmp_path / "scraped_jobs.csv").open() as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        assert rows[0]["email_sent"] == "Yes"
+        assert rows[0]["email_recipient"] == "jobs@acme.com"
+        # Second row should be unchanged
+        assert rows[1]["email_sent"] == "Pending"
+
+    def test_update_scraped_job_status_out_of_range(
+        self,
+        csv_backend: CsvBackend,
+        sample_scraped_jobs: list[dict[str, str]],
+    ) -> None:
+        csv_backend.add_scraped_jobs(sample_scraped_jobs)
+        # Should not crash on out-of-range row number
+        csv_backend.update_scraped_job_status(
+            row_number=999,
+            email_sent="Yes",
+            skip_reason="",
+            email_recipient="nobody@example.com",
+        )
 
 
 class TestCsvBackendRunStats:

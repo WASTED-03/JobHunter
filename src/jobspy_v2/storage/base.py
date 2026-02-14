@@ -15,27 +15,53 @@ SENT_EMAIL_COLUMNS: tuple[str, ...] = (
     "job_url",
     "location",
     "is_remote",
+    "subject",
+    "body_preview",
+    "mode",
+    "word_count",
 )
 
 SCRAPED_JOB_COLUMNS: tuple[str, ...] = (
-    "title",
-    "company",
-    "location",
-    "job_url",
-    "email",
     "date_scraped",
     "board",
+    "title",
+    "company",
+    "company_url",
+    "location",
     "is_remote",
+    "job_url",
+    "job_type",
+    "date_posted",
+    "emails",
+    "salary_min",
+    "salary_max",
+    "salary_currency",
+    "salary_interval",
+    "skills",
+    "experience_range",
+    "job_level",
+    "company_industry",
+    "email_sent",
+    "skip_reason",
+    "email_recipient",
 )
 
 RUN_STATS_COLUMNS: tuple[str, ...] = (
     "date",
     "mode",
     "total_scraped",
-    "emails_found",
+    "jobs_with_emails",
     "emails_sent",
     "emails_failed",
+    "skipped_dedup_exact",
+    "skipped_dedup_domain",
+    "skipped_dedup_company",
+    "skipped_no_recipients",
+    "filtered_title",
+    "filtered_email",
+    "boards_queried",
     "duration_seconds",
+    "dry_run",
 )
 
 
@@ -50,8 +76,22 @@ class StorageBackend(Protocol):
         """Append a single sent email record."""
         ...
 
-    def add_scraped_jobs(self, records: list[dict[str, str]]) -> None:
-        """Append a batch of scraped job records."""
+    def add_scraped_jobs(self, records: list[dict[str, str]]) -> int:
+        """Append a batch of scraped job records.
+
+        Returns the starting row number (1-indexed, after header) in the
+        worksheet so callers can update individual rows later.
+        """
+        ...
+
+    def update_scraped_job_status(
+        self,
+        row_number: int,
+        email_sent: str,
+        skip_reason: str,
+        email_recipient: str,
+    ) -> None:
+        """Update email_sent, skip_reason, and email_recipient for a scraped job row."""
         ...
 
     def get_run_stats(self) -> list[dict[str, str]]:

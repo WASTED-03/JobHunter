@@ -109,7 +109,7 @@ class TestBaseWorkflow:
         assert result == 0
         mock_report.assert_called_once()
         report_kwargs = mock_report.call_args[1]
-        assert report_kwargs["total_emailed"] == 0
+        assert report_kwargs["stats"]["emails_sent"] == 0
 
     @patch(f"{MODULE}.time")
     @patch(f"{MODULE}.send_report")
@@ -132,6 +132,7 @@ class TestBaseWorkflow:
     ) -> None:
         mock_time.monotonic.side_effect = [0.0, 10.0]
         mock_time.sleep = MagicMock()
+        mock_storage.return_value.add_scraped_jobs.return_value = 2
         df = _make_dataframe(1)
         mock_scrape.return_value = FakeScrapeResult(jobs=df)
         mock_dedup = mock_dedup_cls.return_value
@@ -145,7 +146,7 @@ class TestBaseWorkflow:
         mock_send_email.assert_called_once()
         mock_dedup.mark_sent.assert_called_once()
         mock_report.assert_called_once()
-        assert mock_report.call_args[1]["total_emailed"] == 1
+        assert mock_report.call_args[1]["stats"]["emails_sent"] == 1
 
     @patch(f"{MODULE}.time")
     @patch(f"{MODULE}.send_report")
@@ -166,6 +167,7 @@ class TestBaseWorkflow:
     ) -> None:
         mock_time.monotonic.side_effect = [0.0, 5.0]
         mock_time.sleep = MagicMock()
+        mock_storage.return_value.add_scraped_jobs.return_value = 2
         df = _make_dataframe(1)
         mock_scrape.return_value = FakeScrapeResult(jobs=df)
         mock_dedup = mock_dedup_cls.return_value
@@ -179,7 +181,7 @@ class TestBaseWorkflow:
         # send_email should NOT be called in dry-run
         # But mark_sent SHOULD be called
         mock_dedup.mark_sent.assert_called_once()
-        assert mock_report.call_args[1]["total_emailed"] == 1
+        assert mock_report.call_args[1]["stats"]["emails_sent"] == 1
 
     @patch(f"{MODULE}.scrape_jobs")
     @patch(f"{MODULE}.create_storage_backend")
@@ -215,6 +217,7 @@ class TestBaseWorkflow:
         mock_time,
     ) -> None:
         mock_time.monotonic.side_effect = [0.0, 5.0]
+        mock_storage.return_value.add_scraped_jobs.return_value = 2
         df = _make_dataframe(1)
         mock_scrape.return_value = FakeScrapeResult(jobs=df)
         mock_dedup = mock_dedup_cls.return_value
@@ -225,8 +228,8 @@ class TestBaseWorkflow:
         result = wf.run()
 
         assert result == 0
-        assert mock_report.call_args[1]["total_skipped"] == 1
-        assert mock_report.call_args[1]["total_emailed"] == 0
+        assert mock_report.call_args[1]["stats"]["skipped_dedup_exact"] == 1
+        assert mock_report.call_args[1]["stats"]["emails_sent"] == 0
 
     @patch(f"{MODULE}.time")
     @patch(f"{MODULE}.send_report")
@@ -244,6 +247,7 @@ class TestBaseWorkflow:
         mock_time,
     ) -> None:
         mock_time.monotonic.side_effect = [0.0, 5.0]
+        mock_storage.return_value.add_scraped_jobs.return_value = 2
         df = _make_dataframe(1)
         mock_scrape.return_value = FakeScrapeResult(jobs=df)
 
@@ -252,7 +256,7 @@ class TestBaseWorkflow:
         result = wf.run()
 
         assert result == 0
-        assert mock_report.call_args[1]["total_filtered"] == 1
+        assert mock_report.call_args[1]["stats"]["skipped_no_recipients"] == 1
 
     @patch(f"{MODULE}.time")
     @patch(f"{MODULE}.send_report")
@@ -275,6 +279,7 @@ class TestBaseWorkflow:
     ) -> None:
         mock_time.monotonic.side_effect = [0.0, 10.0]
         mock_time.sleep = MagicMock()
+        mock_storage.return_value.add_scraped_jobs.return_value = 2
         # 5 jobs but max_emails = 2
         df = _make_dataframe(5)
         mock_scrape.return_value = FakeScrapeResult(jobs=df)
@@ -287,7 +292,7 @@ class TestBaseWorkflow:
 
         assert result == 0
         assert mock_send_email.call_count == 2
-        assert mock_report.call_args[1]["total_emailed"] == 2
+        assert mock_report.call_args[1]["stats"]["emails_sent"] == 2
 
     @patch(f"{MODULE}.time")
     @patch(f"{MODULE}.send_report")
@@ -309,6 +314,7 @@ class TestBaseWorkflow:
         mock_time,
     ) -> None:
         mock_time.monotonic.side_effect = [0.0, 5.0]
+        mock_storage.return_value.add_scraped_jobs.return_value = 2
         df = _make_dataframe(1)
         mock_scrape.return_value = FakeScrapeResult(jobs=df)
         mock_dedup = mock_dedup_cls.return_value
@@ -319,8 +325,8 @@ class TestBaseWorkflow:
         result = wf.run()
 
         assert result == 0
-        assert mock_report.call_args[1]["total_errors"] == 1
-        assert mock_report.call_args[1]["total_emailed"] == 0
+        assert mock_report.call_args[1]["stats"]["emails_failed"] == 1
+        assert mock_report.call_args[1]["stats"]["emails_sent"] == 0
         # mark_sent should NOT be called on failure
         mock_dedup.mark_sent.assert_not_called()
 
@@ -343,7 +349,7 @@ class TestBaseWorkflow:
         result = wf.run()
 
         assert result == 1
-        assert mock_report.call_args[1]["total_errors"] == 1
+        assert mock_report.call_args[1]["stats"]["emails_failed"] == 1
 
     @patch(f"{MODULE}.time")
     @patch(f"{MODULE}.send_report")
@@ -366,6 +372,7 @@ class TestBaseWorkflow:
     ) -> None:
         mock_time.monotonic.side_effect = [0.0, 10.0]
         mock_time.sleep = MagicMock()
+        mock_storage.return_value.add_scraped_jobs.return_value = 2
         df = _make_dataframe(2)
         mock_scrape.return_value = FakeScrapeResult(jobs=df)
         mock_dedup = mock_dedup_cls.return_value

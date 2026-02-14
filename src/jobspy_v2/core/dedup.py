@@ -100,6 +100,10 @@ class Deduplicator:
         job_url: str = "",
         location: str = "",
         is_remote: bool = False,
+        subject: str = "",
+        body_preview: str = "",
+        mode: str = "",
+        word_count: int = 0,
     ) -> None:
         """Record a sent email in storage and update local cache."""
         row = {
@@ -111,6 +115,10 @@ class Deduplicator:
             "job_url": job_url,
             "location": location,
             "is_remote": str(is_remote),
+            "subject": subject,
+            "body_preview": body_preview[:200] if body_preview else "",
+            "mode": mode,
+            "word_count": str(word_count),
         }
         self._storage.add_sent_email(row)
 

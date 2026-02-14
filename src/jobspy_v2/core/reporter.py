@@ -20,35 +20,42 @@ def send_report(
     settings: Settings,
     storage: StorageBackend,
     mode: str,
-    total_scraped: int = 0,
-    total_emailed: int = 0,
-    total_errors: int = 0,
-    total_skipped: int = 0,
-    total_filtered: int = 0,
+    stats: dict,
     duration_seconds: float = 0.0,
-    boards_queried: list[str] | None = None,
-    dry_run: bool = False,
 ) -> bool:
-    """
-    Send a summary report email and record run stats.
+    """Send a summary report email and record run stats.
 
-    Returns True if report email was sent successfully.
+    Args:
+        settings: Application settings.
+        storage: Storage backend for persisting run stats.
+        mode: Workflow mode ("onsite" or "remote").
+        stats: Granular stats dict with keys matching RUN_STATS_COLUMNS.
+        duration_seconds: Total pipeline duration.
+
+    Returns:
+        True if report email was sent successfully.
     """
-    timestamp = datetime.now().isoformat(timespec="seconds")
-    boards_str = ", ".join(boards_queried) if boards_queried else "none"
+    date_str = datetime.now().isoformat(timespec="seconds")
+    boards = stats.get("boards_queried", [])
+    boards_str = ", ".join(boards) if boards else "none"
 
     # ── Record run stats in storage ────────────────────────────────────
     stats_row = {
-        "timestamp": timestamp,
+        "date": date_str,
         "mode": mode,
-        "total_scraped": str(total_scraped),
-        "total_emailed": str(total_emailed),
-        "total_errors": str(total_errors),
-        "total_skipped": str(total_skipped),
-        "total_filtered": str(total_filtered),
-        "duration_seconds": f"{duration_seconds:.1f}",
+        "total_scraped": str(stats.get("total_scraped", 0)),
+        "jobs_with_emails": str(stats.get("jobs_with_emails", 0)),
+        "emails_sent": str(stats.get("emails_sent", 0)),
+        "emails_failed": str(stats.get("emails_failed", 0)),
+        "skipped_dedup_exact": str(stats.get("skipped_dedup_exact", 0)),
+        "skipped_dedup_domain": str(stats.get("skipped_dedup_domain", 0)),
+        "skipped_dedup_company": str(stats.get("skipped_dedup_company", 0)),
+        "skipped_no_recipients": str(stats.get("skipped_no_recipients", 0)),
+        "filtered_title": str(stats.get("filtered_title", 0)),
+        "filtered_email": str(stats.get("filtered_email", 0)),
         "boards_queried": boards_str,
-        "dry_run": str(dry_run),
+        "duration_seconds": f"{duration_seconds:.1f}",
+        "dry_run": str(settings.dry_run),
     }
     try:
         storage.add_run_stats(stats_row)
@@ -57,18 +64,15 @@ def send_report(
         logger.exception("Failed to record run stats")
 
     # ── Build report email ─────────────────────────────────────────────
-    subject = _build_subject(mode, total_emailed, dry_run)
+    emails_sent = int(stats.get("emails_sent", 0))
+    subject = _build_subject(mode, emails_sent, settings.dry_run)
     body = _build_body(
         mode=mode,
-        timestamp=timestamp,
-        total_scraped=total_scraped,
-        total_filtered=total_filtered,
-        total_skipped=total_skipped,
-        total_emailed=total_emailed,
-        total_errors=total_errors,
+        date_str=date_str,
+        stats=stats,
         duration_seconds=duration_seconds,
         boards_str=boards_str,
-        dry_run=dry_run,
+        dry_run=settings.dry_run,
     )
 
     # ── Send report email ──────────────────────────────────────────────
@@ -84,46 +88,67 @@ def send_report(
     )
 
 
-def _build_subject(mode: str, total_emailed: int, dry_run: bool) -> str:
+def _build_subject(mode: str, emails_sent: int, dry_run: bool) -> str:
     """Build report email subject line."""
     prefix = "[DRY RUN] " if dry_run else ""
-    return f"{prefix}JobSpy-V2 Report: {mode.upper()} — {total_emailed} emails sent"
+    return f"{prefix}JobSpy-V2 Report: {mode.upper()} — {emails_sent} emails sent"
 
 
 def _build_body(
     *,
     mode: str,
-    timestamp: str,
-    total_scraped: int,
-    total_filtered: int,
-    total_skipped: int,
-    total_emailed: int,
-    total_errors: int,
+    date_str: str,
+    stats: dict,
     duration_seconds: float,
     boards_str: str,
     dry_run: bool,
 ) -> str:
-    """Build report email body with stats summary."""
+    """Build report email body with rich stats summary."""
     minutes = duration_seconds / 60
     status = "DRY RUN" if dry_run else "LIVE"
 
+    total_scraped = stats.get("total_scraped", 0)
+    jobs_with_emails = stats.get("jobs_with_emails", 0)
+    emails_sent = stats.get("emails_sent", 0)
+    emails_failed = stats.get("emails_failed", 0)
+    skipped_exact = stats.get("skipped_dedup_exact", 0)
+    skipped_domain = stats.get("skipped_dedup_domain", 0)
+    skipped_company = stats.get("skipped_dedup_company", 0)
+    skipped_no_recip = stats.get("skipped_no_recipients", 0)
+    filtered_title = stats.get("filtered_title", 0)
+    filtered_email = stats.get("filtered_email", 0)
+
+    total_dedup = skipped_exact + skipped_domain + skipped_company
+
     return f"""JobSpy-V2 Run Report
-{"=" * 40}
+{"=" * 50}
 
 Mode:            {mode.upper()} ({status})
-Timestamp:       {timestamp}
+Date:            {date_str}
 Duration:        {minutes:.1f} minutes ({duration_seconds:.0f}s)
 Boards queried:  {boards_str}
 
-Pipeline Summary
-{"-" * 40}
-Total scraped:   {total_scraped}
-Filtered out:    {total_filtered}
-Skipped (dedup): {total_skipped}
-Emails sent:     {total_emailed}
-Errors:          {total_errors}
+Scraping Summary
+{"-" * 50}
+Total scraped:       {total_scraped}
+Filtered (no email): {filtered_email}
+Filtered (title):    {filtered_title}
+Jobs with emails:    {jobs_with_emails}
 
-Success rate:    {_calc_rate(total_emailed, total_emailed + total_errors)}
+Email Summary
+{"-" * 50}
+Emails sent:         {emails_sent}
+Emails failed:       {emails_failed}
+No valid recipients: {skipped_no_recip}
+
+Dedup Breakdown
+{"-" * 50}
+Exact email match:   {skipped_exact}
+Domain cooldown:     {skipped_domain}
+Company cooldown:    {skipped_company}
+Total dedup skipped: {total_dedup}
+
+Success rate:        {_calc_rate(emails_sent, emails_sent + emails_failed)}
 """
 
 

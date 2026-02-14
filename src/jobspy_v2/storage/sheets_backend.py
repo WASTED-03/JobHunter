@@ -25,6 +25,11 @@ _WORKSHEETS: dict[str, tuple[str, ...]] = {
     "Run Stats": RUN_STATS_COLUMNS,
 }
 
+# Column indices (1-based) for status update fields in Scraped Jobs
+_EMAIL_SENT_COL = SCRAPED_JOB_COLUMNS.index("email_sent") + 1
+_SKIP_REASON_COL = SCRAPED_JOB_COLUMNS.index("skip_reason") + 1
+_EMAIL_RECIPIENT_COL = SCRAPED_JOB_COLUMNS.index("email_recipient") + 1
+
 
 def _parse_credentials(raw: str) -> dict[str, Any]:
     """Parse credentials from raw JSON string or base64-encoded JSON."""
@@ -120,14 +125,42 @@ class SheetsBackend:
         ws.append_row(row, value_input_option="USER_ENTERED")
         logger.debug("Recorded sent email: %s", record.get("email", "?"))
 
-    def add_scraped_jobs(self, records: list[dict[str, str]]) -> None:
-        """Append a batch of scraped job records to the sheet."""
-        if not records:
-            return
+    def add_scraped_jobs(self, records: list[dict[str, str]]) -> int:
+        """Append a batch of scraped job records to the sheet.
+
+        Returns the starting row number (1-indexed, after header) where the
+        first new record was inserted.
+        """
         ws = self._get_ws("Scraped Jobs")
+        # Current row count = existing data rows + 1 header row
+        existing_rows = len(ws.get_all_values())
+        start_row = existing_rows + 1  # 1-indexed, first new data row
+
+        if not records:
+            return start_row
+
         rows = [self._record_to_row(r, SCRAPED_JOB_COLUMNS) for r in records]
         ws.append_rows(rows, value_input_option="USER_ENTERED")
-        logger.info("Saved %d scraped jobs to Sheets", len(records))
+        logger.info(
+            "Saved %d scraped jobs to Sheets (starting row %d)", len(records), start_row
+        )
+        return start_row
+
+    def update_scraped_job_status(
+        self,
+        row_number: int,
+        email_sent: str,
+        skip_reason: str,
+        email_recipient: str,
+    ) -> None:
+        """Update email_sent, skip_reason, and email_recipient for a scraped job row."""
+        ws = self._get_ws("Scraped Jobs")
+        ws.update_cell(row_number, _EMAIL_SENT_COL, email_sent)
+        ws.update_cell(row_number, _SKIP_REASON_COL, skip_reason)
+        ws.update_cell(row_number, _EMAIL_RECIPIENT_COL, email_recipient)
+        logger.debug(
+            "Updated scraped job row %d: email_sent=%s", row_number, email_sent
+        )
 
     def get_run_stats(self) -> list[dict[str, str]]:
         """Return all run statistics records from the sheet."""

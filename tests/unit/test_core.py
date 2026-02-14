@@ -460,13 +460,24 @@ class TestReporter:
     ) -> None:
         mock_send.return_value = (True, "")
 
+        stats = {
+            "total_scraped": 50,
+            "jobs_with_emails": 42,
+            "emails_sent": 10,
+            "emails_failed": 2,
+            "skipped_dedup_exact": 3,
+            "skipped_dedup_domain": 1,
+            "skipped_dedup_company": 0,
+            "skipped_no_recipients": 5,
+            "filtered_title": 8,
+            "filtered_email": 4,
+            "boards_queried": ["indeed", "linkedin"],
+        }
         send_report(
             settings=settings,
             storage=csv_storage,
             mode="onsite",
-            total_scraped=50,
-            total_emailed=10,
-            total_errors=2,
+            stats=stats,
             duration_seconds=120.5,
         )
         mock_send.assert_called_once()
@@ -483,20 +494,32 @@ class TestReporter:
     ) -> None:
         mock_send.return_value = (True, "")
 
+        stats = {
+            "total_scraped": 50,
+            "jobs_with_emails": 42,
+            "emails_sent": 10,
+            "emails_failed": 2,
+            "skipped_dedup_exact": 3,
+            "skipped_dedup_domain": 1,
+            "skipped_dedup_company": 0,
+            "skipped_no_recipients": 5,
+            "filtered_title": 8,
+            "filtered_email": 4,
+            "boards_queried": ["indeed", "linkedin"],
+        }
         send_report(
             settings=settings,
             storage=csv_storage,
             mode="onsite",
-            total_scraped=50,
-            total_emailed=10,
-            total_errors=2,
+            stats=stats,
             duration_seconds=120.5,
         )
         # Verify run stats were recorded
-        stats = csv_storage.get_run_stats()
-        assert len(stats) == 1
-        assert stats[0]["mode"] == "onsite"
-        assert stats[0]["total_scraped"] == "50"
+        run_stats = csv_storage.get_run_stats()
+        assert len(run_stats) == 1
+        assert run_stats[0]["mode"] == "onsite"
+        assert run_stats[0]["total_scraped"] == "50"
+        assert run_stats[0]["emails_sent"] == "10"
 
     @patch("jobspy_v2.core.reporter._send_report_email")
     def test_report_does_not_crash_on_send_failure(
@@ -507,16 +530,27 @@ class TestReporter:
     ) -> None:
         mock_send.return_value = (False, "SMTP error")
 
+        stats = {
+            "total_scraped": 0,
+            "jobs_with_emails": 0,
+            "emails_sent": 0,
+            "emails_failed": 0,
+            "skipped_dedup_exact": 0,
+            "skipped_dedup_domain": 0,
+            "skipped_dedup_company": 0,
+            "skipped_no_recipients": 0,
+            "filtered_title": 0,
+            "filtered_email": 0,
+            "boards_queried": [],
+        }
         # Should not raise
         send_report(
             settings=settings,
             storage=csv_storage,
             mode="remote",
-            total_scraped=0,
-            total_emailed=0,
-            total_errors=0,
+            stats=stats,
             duration_seconds=0,
         )
         # Stats should still be recorded even if email fails
-        stats = csv_storage.get_run_stats()
-        assert len(stats) == 1
+        run_stats = csv_storage.get_run_stats()
+        assert len(run_stats) == 1
