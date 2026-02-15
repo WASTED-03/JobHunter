@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     skip_weekends: bool = False
     dry_run: bool = False
     log_level: str = "INFO"
-    scrape_max_workers: int = 5
+    scrape_max_workers: int = 30
 
     # -- Email Settings -----------------------------------------------------
     min_email_words: int = 120
