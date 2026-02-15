@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     proxy_list: CsvList = Field(default_factory=list)
 
     # -- General ------------------------------------------------------------
-    skip_weekends: bool = True
+    skip_weekends: bool = False
     dry_run: bool = False
     log_level: str = "INFO"
     scrape_max_workers: int = 5
