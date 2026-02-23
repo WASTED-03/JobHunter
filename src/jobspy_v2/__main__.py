@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic")
 
 from jobspy_v2.config import get_settings
 
@@ -43,11 +46,6 @@ def main(argv: list[str] | None = None) -> int:
     # Override dry_run from CLI flag
     if args.dry_run:
         settings = settings.model_copy(update={"dry_run": True})
-
-    # Suppress Pydantic deprecation warnings from jobspy library
-    import warnings
-
-    warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic")
 
     # Configure logging
     logging.basicConfig(
