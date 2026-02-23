@@ -19,6 +19,23 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 5
 
+GMAIL_QUOTA_ERRORS = [
+    "quota",
+    "max daily",
+    "daily limit",
+    "too many messages",
+    "mailer daemon",
+    "exceeded",
+    "450",
+    "554",
+]
+
+
+def is_gmail_quota_error(error: str) -> bool:
+    """Check if the error message indicates a Gmail quota exceeded error."""
+    error_lower = error.lower()
+    return any(quota_err in error_lower for quota_err in GMAIL_QUOTA_ERRORS)
+
 
 def send_email(
     *,
@@ -51,7 +68,7 @@ def send_email(
                 email=settings.gmail_email,
                 password=settings.gmail_app_password,
             )
-            logger.info("Email sent to %s (attempt %d)", to_email, attempt)
+            logger.debug("Email sent to %s (attempt %d)", to_email, attempt)
             return True, ""
 
         except smtplib.SMTPAuthenticationError as exc:
@@ -61,18 +78,27 @@ def send_email(
 
         except smtplib.SMTPServerDisconnected as exc:
             error = f"Server disconnected (attempt {attempt}): {exc}"
+            if is_gmail_quota_error(str(exc)):
+                logger.error("Gmail quota exceeded: %s", exc)
+                return False, f"gmail_quota_exceeded: {exc}"
             logger.warning(error)
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_SECONDS)
 
         except smtplib.SMTPException as exc:
             error = f"SMTP error (attempt {attempt}): {exc}"
+            if is_gmail_quota_error(str(exc)):
+                logger.error("Gmail quota exceeded: %s", exc)
+                return False, f"gmail_quota_exceeded: {exc}"
             logger.warning(error)
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_SECONDS)
 
         except Exception as exc:
             error = f"Unexpected error (attempt {attempt}): {exc}"
+            if is_gmail_quota_error(str(exc)):
+                logger.error("Gmail quota exceeded: %s", exc)
+                return False, f"gmail_quota_exceeded: {exc}"
             logger.warning(error)
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_SECONDS)

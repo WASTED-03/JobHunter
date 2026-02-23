@@ -27,7 +27,7 @@ concurrency:
 jobs:
   onsite:
     runs-on: ubuntu-latest
-    timeout-minutes: 480  # Increased to 8 hours for large scrapes
+    timeout-minutes: 350  # 5h 50min - stop gracefully before GitHub's 6h hard limit
 
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +105,7 @@ jobs:
           EMAIL_INTERVAL_SECONDS: ${{ secrets.EMAIL_INTERVAL_SECONDS }}
           APPLICATION_SENDER_NAME: ${{ secrets.APPLICATION_SENDER_NAME }}
           FALLBACK_EMAIL_SUBJECT: ${{ secrets.FALLBACK_EMAIL_SUBJECT }}
-          FALLBACK_EMAIL_BODY: ${{ secrets.FALLBACK_EMAIL_BODY }}
+          FALLBACK_EMAIL_BODY: ${{ secrets.ONSITE_FALLBACK_EMAIL_BODY }}
           # --- Filter ---
           REJECT_TITLES: ${{ secrets.REJECT_TITLES }}
           EMAIL_FILTER_PATTERNS: ${{ secrets.EMAIL_FILTER_PATTERNS }}

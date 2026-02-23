@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Cooldown periods
-DOMAIN_COOLDOWN_DAYS = 5
 COMPANY_COOLDOWN_DAYS = 1
 
 
@@ -44,20 +43,17 @@ class Deduplicator:
 
         Rules:
         1. Exact email already sent → reject
-        2. Same domain within DOMAIN_COOLDOWN_DAYS → reject
-        3. Same company contacted today → reject
+        2. Same company contacted today → reject
 
         Returns (can_send, reason) where reason is empty string if allowed.
         """
         entries = self._get_entries()
         email_lower = email.lower().strip()
-        domain_lower = domain.lower().strip()
         company_lower = company.lower().strip()
         today = date.today()
 
         for entry in entries:
             entry_email = entry.get("email", "").lower().strip()
-            entry_domain = entry.get("domain", "").lower().strip()
             entry_company = entry.get("company", "").lower().strip()
             entry_date_str = entry.get("date_sent", "")
 
@@ -70,17 +66,7 @@ class Deduplicator:
             if entry_date is None:
                 continue
 
-            # Rule 2: domain cooldown
-            if entry_domain and entry_domain == domain_lower:
-                days_since = (today - entry_date).days
-                if days_since < DOMAIN_COOLDOWN_DAYS:
-                    return (
-                        False,
-                        f"Domain {domain} contacted {days_since}d ago "
-                        f"(cooldown: {DOMAIN_COOLDOWN_DAYS}d)",
-                    )
-
-            # Rule 3: same company today
+            # Rule 2: same company today
             if entry_company and entry_company == company_lower:
                 if entry_date == today:
                     return (

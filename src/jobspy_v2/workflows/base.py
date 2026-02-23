@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from jobspy_v2.config import Settings
 from jobspy_v2.core.dedup import Deduplicator
 from jobspy_v2.core.email_gen import generate_email
-from jobspy_v2.core.email_sender import send_email
+from jobspy_v2.core.email_sender import send_email, is_gmail_quota_error
 from jobspy_v2.core.reporter import send_report
 from jobspy_v2.core.scraper import scrape_jobs
 from jobspy_v2.storage import create_storage_backend
@@ -55,6 +55,13 @@ def _reason_to_stat_key(reason: str) -> str:
     return "skipped_dedup_exact"  # safe fallback
 
 
+def _is_time_limit_reached(start: float, settings: Settings) -> bool:
+    """Check if we're approaching the max runtime limit."""
+    elapsed_minutes = (time.monotonic() - start) / 60
+    buffer_minutes = 5
+    return elapsed_minutes >= (settings.max_runtime_minutes - buffer_minutes)
+
+
 # ------------------------------------------------------------------
 # Workflow
 # ------------------------------------------------------------------
@@ -96,10 +103,13 @@ class BaseWorkflow:
             "skipped_dedup_domain": 0,
             "skipped_dedup_company": 0,
             "skipped_no_recipients": 0,
+            "skipped_timeout": 0,
+            "skipped_daily_quota": 0,
             "filtered_title": 0,
             "filtered_email": 0,
             "boards_queried": [],
             "pending_carried_over": 0,
+            "run_stop_reason": "",
         }
 
         try:
@@ -119,24 +129,48 @@ class BaseWorkflow:
             if result.jobs.empty:
                 logger.info("[%s] No jobs found after filtering.", self.mode)
                 if pending_jobs and not self.settings.dry_run:
-                    self._process_pending_after_new_jobs(pending_jobs, stats)
+                    self._process_pending_after_new_jobs(pending_jobs, stats, start)
                 self._send_report(stats, start)
                 return 0
 
             start_row = self._save_scraped_jobs(result.jobs)
 
             # ── Phase 2: Process + Email + Update ─────────────────────
-            max_emails = self._get_max_emails()
-            if max_emails > 0:
-                self._process_jobs(result.jobs, start_row, max_emails, stats)
-            else:
-                logger.info(
-                    "[%s] No email quota remaining, skipping new jobs.", self.mode
+            if _is_time_limit_reached(start, self.settings):
+                stats["run_stop_reason"] = "timeout"
+                logger.warning(
+                    "[%s] Time limit reached, stopping gracefully.", self.mode
                 )
+            else:
+                max_emails = self._get_max_emails()
+                if max_emails > 0:
+                    self._process_jobs(result.jobs, start_row, max_emails, stats, start)
+                else:
+                    stats["run_stop_reason"] = "daily_quota"
+                    logger.info(
+                        "[%s] No email quota remaining, skipping new jobs.", self.mode
+                    )
+
+            logger.info(
+                "[%s] Email phase complete: sent=%d, failed=%d, skipped_no_email=%d, "
+                "skipped_dedup=%d, jobs_with_emails=%d",
+                self.mode,
+                stats["emails_sent"],
+                stats["emails_failed"],
+                stats["skipped_no_recipients"],
+                stats["skipped_dedup_exact"]
+                + stats["skipped_dedup_domain"]
+                + stats["skipped_dedup_company"],
+                stats["jobs_with_emails"],
+            )
 
             # ── Phase 3: Process pending jobs if under daily limit ─────
-            if pending_jobs and not self.settings.dry_run:
-                self._process_pending_after_new_jobs(pending_jobs, stats)
+            if (
+                pending_jobs
+                and not self.settings.dry_run
+                and not stats["run_stop_reason"]
+            ):
+                self._process_pending_after_new_jobs(pending_jobs, stats, start)
 
         except Exception:
             logger.exception("[%s] Fatal error in pipeline.", self.mode)
@@ -207,13 +241,23 @@ class BaseWorkflow:
         start_row: int,
         max_emails: int,
         stats: dict,
+        start_time: float = 0,
     ) -> None:
         """Iterate jobs sequentially: validate -> dedup -> email -> update status."""
         sent_count = 0
 
         for i, (_, row) in enumerate(jobs_df.iterrows()):
             if sent_count >= max_emails:
+                stats["run_stop_reason"] = "daily_quota"
                 logger.info("[%s] Reached max emails (%d).", self.mode, max_emails)
+                break
+
+            if start_time and _is_time_limit_reached(start_time, self.settings):
+                stats["run_stop_reason"] = "timeout"
+                stats["skipped_timeout"] += 1
+                logger.warning(
+                    "[%s] Time limit reached, stopping job processing.", self.mode
+                )
                 break
 
             row_number = start_row + i
@@ -260,7 +304,7 @@ class BaseWorkflow:
 
             # ── Step 4: Send (or dry-run) ─────────────────────────────
             if self.settings.dry_run:
-                logger.info(
+                logger.debug(
                     "[DRY RUN] Would send to %s — %s at %s",
                     primary_email,
                     title,
@@ -277,6 +321,14 @@ class BaseWorkflow:
                 )
                 if not success:
                     logger.error("Failed to send to %s: %s", primary_email, error)
+                    if is_gmail_quota_error(error):
+                        stats["run_stop_reason"] = "gmail_quota_exceeded"
+                        stats["skipped_daily_quota"] += 1
+                        logger.error(
+                            "[%s] Gmail quota exceeded, stopping email sending.",
+                            self.mode,
+                        )
+                        break
                     self._update_row_status(
                         row_number,
                         "Failed",
@@ -383,6 +435,7 @@ class BaseWorkflow:
         pending_jobs: list[dict[str, str]],
         max_emails: int,
         stats: dict,
+        start_time: float = 0,
     ) -> int:
         """Process pending jobs from previous runs.
 
@@ -398,10 +451,20 @@ class BaseWorkflow:
 
         for job in pending_jobs:
             if sent_count >= max_emails:
+                if not stats["run_stop_reason"]:
+                    stats["run_stop_reason"] = "daily_quota"
                 logger.info(
                     "[%s] Carried-over: reached max emails (%d)",
                     self.mode,
                     max_emails,
+                )
+                break
+
+            if start_time and _is_time_limit_reached(start_time, self.settings):
+                stats["run_stop_reason"] = "timeout"
+                stats["skipped_timeout"] += 1
+                logger.warning(
+                    "[%s] Time limit reached during pending jobs.", self.mode
                 )
                 break
 
@@ -459,7 +522,7 @@ class BaseWorkflow:
 
             # Send or dry-run
             if self.settings.dry_run:
-                logger.info(
+                logger.debug(
                     "[DRY RUN] Would send to %s — %s at %s",
                     primary_email,
                     title,
@@ -476,6 +539,14 @@ class BaseWorkflow:
                 )
                 if not success:
                     logger.error("Failed to send to %s: %s", primary_email, error)
+                    if is_gmail_quota_error(error):
+                        stats["run_stop_reason"] = "gmail_quota_exceeded"
+                        stats["skipped_daily_quota"] += 1
+                        logger.error(
+                            "[%s] Gmail quota exceeded, stopping email sending.",
+                            self.mode,
+                        )
+                        break
                     self._update_row_status(
                         row_number, "Failed", f"smtp_error: {error}", primary_email
                     )
@@ -523,6 +594,7 @@ class BaseWorkflow:
         self,
         pending_jobs: list[dict[str, str]],
         stats: dict,
+        start_time: float = 0,
     ) -> None:
         """Process pending jobs only if total emails sent today is under limit.
 
@@ -537,6 +609,7 @@ class BaseWorkflow:
         today_sent = self.storage.get_today_sent_emails_count()
 
         if today_sent >= total_daily_limit:
+            stats["run_stop_reason"] = "daily_quota"
             logger.info(
                 "[%s] Daily email limit reached (%d/%d). Skipping pending jobs.",
                 self.mode,
@@ -553,4 +626,4 @@ class BaseWorkflow:
             remaining_quota,
         )
 
-        self._process_pending_jobs(pending_jobs, remaining_quota, stats)
+        self._process_pending_jobs(pending_jobs, remaining_quota, stats, start_time)

@@ -138,7 +138,7 @@ def _generate_with_llm(
     body = _append_footer(body, settings)
 
     word_count = count_words(body)
-    logger.info("LLM email: %d words, subject='%s'", word_count, subject[:50])
+    logger.debug("LLM email: %d words, subject='%s'", word_count, subject[:50])
 
     return EmailResult(
         subject=subject,
@@ -166,7 +166,7 @@ def _generate_fallback(
         body = body.replace(f"{{{key}}}", value)
 
     word_count = count_words(body)
-    logger.info("Fallback email: %d words, subject='%s'", word_count, subject[:50])
+    logger.debug("Fallback email: %d words, subject='%s'", word_count, subject[:50])
 
     return EmailResult(
         subject=subject,

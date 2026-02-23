@@ -151,7 +151,7 @@ class SheetsBackend:
 
         rows = [self._record_to_row(r, SCRAPED_JOB_COLUMNS) for r in records]
         ws.append_rows(rows, value_input_option="USER_ENTERED")
-        logger.info(
+        logger.debug(
             "Saved %d scraped jobs to Sheets (starting row %d)", len(records), start_row
         )
         return start_row

@@ -44,15 +44,28 @@ class ScrapeResult:
     boards_queried: list[str] = field(default_factory=list)
 
 
-def _build_base_params(settings: Settings, mode: str) -> dict:
+def _get_countries_indeed(settings: Settings, mode: str) -> list[str]:
+    """Get list of countries to scrape for Indeed."""
+    prefix = mode.lower()
+    countries = getattr(settings, f"{prefix}_countries_indeed", [])
+    if not countries and prefix == "remote":
+        countries = [getattr(settings, f"{prefix}_country_indeed", "USA")]
+    elif not countries:
+        countries = [getattr(settings, f"{prefix}_country_indeed", "")]
+    return [c for c in countries if c]
+
+
+def _build_base_params(settings: Settings, mode: str, country_indeed: str = "") -> dict:
     """Build base params from settings for the given mode (onsite/remote)."""
     prefix = mode.lower()
     params: dict = {
         "results_wanted": getattr(settings, f"{prefix}_results_wanted"),
-        "country_indeed": getattr(settings, f"{prefix}_country_indeed"),
         "linkedin_fetch_description": True,
-        "verbose": 2,
+        "verbose": 0,
     }
+
+    if country_indeed:
+        params["country_indeed"] = country_indeed
 
     hours_old = getattr(settings, f"{prefix}_hours_old", None)
     if hours_old:
@@ -114,15 +127,15 @@ def _scrape_single(
     params: dict, board: str, location: str, term: str
 ) -> pd.DataFrame | None:
     """Execute a single jobspy scrape call (designed to run in a thread)."""
-    logger.info("Scraping %s | location=%s | term='%s'", board, location, term)
+    logger.debug("Scraping %s | location=%s | term='%s'", board, location, term)
     try:
         df = jobspy_scrape(**params)
         if df is not None and not df.empty:
-            logger.info("  → %d results from %s", len(df), board)
+            logger.debug("  → %d results from %s", len(df), board)
             return df
-        logger.info("  → 0 results from %s", board)
+        logger.debug("  → 0 results from %s", board)
     except Exception:
-        logger.exception("  → Error scraping %s for '%s' in %s", board, term, location)
+        logger.warning("  → Error scraping %s for '%s' in %s", board, term, location)
     return None
 
 
@@ -139,14 +152,24 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
     search_terms: list[str] = getattr(settings, f"{prefix}_search_terms")
     boards: list[str] = getattr(settings, f"{prefix}_job_boards")
 
-    # Locations: onsite has a list, remote has a single location
+    # Locations: both onsite and remote support lists
     if prefix == "onsite":
         locations: list[str] = settings.onsite_locations
     else:
-        locations = [settings.remote_location]
+        locations: list[str] = settings.remote_locations
+
+    # Get countries for Indeed (remote mode supports multiple)
+    countries_indeed = _get_countries_indeed(settings, mode)
+    if countries_indeed and "indeed" in boards:
+        logger.info(
+            "[%s] Indeed will scrape %d countries: %s",
+            mode,
+            len(countries_indeed),
+            ", ".join(countries_indeed),
+        )
 
     logger.info(
-        "Scraper Config (%s): terms=%d, boards=%d, locations=%d",
+        "[%s] Starting scrape: %d terms × %d boards × %d locations",
         mode,
         len(search_terms),
         len(boards),
@@ -156,19 +179,32 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
     logger.debug("Boards: %s", boards)
     logger.debug("Locations: %s", locations)
 
-    base_params = _build_base_params(settings, mode)
-
     # ── Build all param combinations ───────────────────────────────────
     tasks: list[tuple[dict, str, str, str]] = []
     for location in locations:
         for term in search_terms:
             for board in boards:
-                params = _adapt_params_for_board(
-                    {**base_params, "search_term": term}, board
-                )
-                params["site_name"] = [board]
-                params["location"] = location
-                tasks.append((params, board, location, term))
+                if board in ("indeed", "glassdoor") and countries_indeed:
+                    for country in countries_indeed:
+                        params = _adapt_params_for_board(
+                            {
+                                **_build_base_params(settings, mode, country),
+                                "search_term": term,
+                            },
+                            board,
+                        )
+                        params["site_name"] = [board]
+                        params["location"] = location
+                        location_label = f"{location} ({country})"
+                        tasks.append((params, board, location_label, term))
+                else:
+                    base_params = _build_base_params(settings, mode)
+                    params = _adapt_params_for_board(
+                        {**base_params, "search_term": term}, board
+                    )
+                    params["site_name"] = [board]
+                    params["location"] = location
+                    tasks.append((params, board, location, term))
 
     # ── Parallel scraping ──────────────────────────────────────────────
     all_frames: list[pd.DataFrame] = []
@@ -204,7 +240,7 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
 
     combined = pd.concat(all_frames, ignore_index=True)
     total_raw = len(combined)
-    logger.info("Total raw results: %d", total_raw)
+    logger.info("[%s] Raw scrape results: %d jobs", mode, total_raw)
 
     # ── Filter: must have valid email ──────────────────────────────────
     if "emails" in combined.columns:
@@ -217,7 +253,13 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
             boards_queried=boards_queried,
         )
     total_after_email_filter = len(combined)
-    logger.info("After email validation: %d", total_after_email_filter)
+    filtered_email = total_raw - total_after_email_filter
+    logger.info(
+        "[%s] After email filter: %d (removed %d no-email)",
+        mode,
+        total_after_email_filter,
+        filtered_email,
+    )
 
     # ── Filter: reject unwanted titles ─────────────────────────────────
     reject_patterns = settings.reject_titles
@@ -227,7 +269,7 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
         )
         rejected_count = (~mask).sum()
         if rejected_count > 0:
-            logger.info("Rejected %d jobs by title filter", rejected_count)
+            logger.info("[%s] Title filter rejected: %d", mode, rejected_count)
         combined = combined[mask]
     total_after_title_filter = len(combined)
 
@@ -249,12 +291,12 @@ def scrape_jobs(settings: Settings, mode: str) -> ScrapeResult:
         total_deduplicated = len(combined)
         dupes = before_dedup - total_deduplicated
         if dupes > 0:
-            logger.info("Removed %d duplicate job URLs", dupes)
+            logger.info("[%s] Dedup removed: %d duplicate URLs", mode, dupes)
     else:
         total_deduplicated = len(combined)
 
     combined = combined.reset_index(drop=True)
-    logger.info("Final jobs to process: %d", total_deduplicated)
+    logger.info("[%s] Final jobs to process: %d", mode, total_deduplicated)
 
     return ScrapeResult(
         jobs=combined,

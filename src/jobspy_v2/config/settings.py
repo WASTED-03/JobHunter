@@ -119,13 +119,17 @@ class Settings(BaseSettings):
     # Max total emails (remote + onsite) per day before stopping pending jobs
     daily_total_emails_limit: int = 500
 
+    # -- Time Limits ---------------------------------------------------------
+    # Max runtime in minutes before gracefully stopping (default 5h 50min to leave 10min buffer)
+    max_runtime_minutes: int = 350
+
     # -- Remote Settings ----------------------------------------------------
     remote_search_terms: CsvList = Field(default_factory=list)
-    remote_location: str = "Remote"
+    remote_locations: CsvList = Field(default_factory=list)
     remote_is_remote: bool = True
     remote_job_type: str = "fulltime"
     remote_job_boards: CsvList = Field(default_factory=list)
-    remote_country_indeed: str = "USA"
+    remote_countries_indeed: CsvList = Field(default_factory=list)
     remote_results_wanted: int = 1000
     remote_hours_old: int = 48
     remote_max_emails_per_day: int = 250
@@ -139,6 +143,8 @@ class Settings(BaseSettings):
         "onsite_locations",
         "onsite_job_boards",
         "remote_search_terms",
+        "remote_locations",
+        "remote_countries_indeed",
         "remote_job_boards",
         mode="before",
     )

@@ -51,17 +51,31 @@ def send_report(
         "skipped_dedup_domain": str(stats.get("skipped_dedup_domain", 0)),
         "skipped_dedup_company": str(stats.get("skipped_dedup_company", 0)),
         "skipped_no_recipients": str(stats.get("skipped_no_recipients", 0)),
+        "skipped_timeout": str(stats.get("skipped_timeout", 0)),
+        "skipped_daily_quota": str(stats.get("skipped_daily_quota", 0)),
         "filtered_title": str(stats.get("filtered_title", 0)),
         "filtered_email": str(stats.get("filtered_email", 0)),
         "boards_queried": boards_str,
         "duration_seconds": f"{duration_seconds:.1f}",
         "dry_run": str(settings.dry_run),
+        "run_stop_reason": stats.get("run_stop_reason", ""),
     }
     try:
         storage.add_run_stats(stats_row)
-        logger.info("Run stats recorded to storage")
     except Exception:
         logger.exception("Failed to record run stats")
+
+    # ── Log final summary ──────────────────────────────────────────────
+    logger.info(
+        "[%s] Run complete: scraped=%d, emails_sent=%d, emails_failed=%d, "
+        "duration=%.1fmin, stop_reason=%s",
+        mode,
+        stats.get("total_scraped", 0),
+        stats.get("emails_sent", 0),
+        stats.get("emails_failed", 0),
+        duration_seconds / 60,
+        stats.get("run_stop_reason", "completed"),
+    )
 
     # ── Build report email ─────────────────────────────────────────────
     emails_sent = int(stats.get("emails_sent", 0))
@@ -115,10 +129,15 @@ def _build_body(
     skipped_domain = stats.get("skipped_dedup_domain", 0)
     skipped_company = stats.get("skipped_dedup_company", 0)
     skipped_no_recip = stats.get("skipped_no_recipients", 0)
+    skipped_timeout = stats.get("skipped_timeout", 0)
+    skipped_daily_quota = stats.get("skipped_daily_quota", 0)
     filtered_title = stats.get("filtered_title", 0)
     filtered_email = stats.get("filtered_email", 0)
+    run_stop_reason = stats.get("run_stop_reason", "")
 
     total_dedup = skipped_exact + skipped_domain + skipped_company
+
+    stop_reason_str = f" ({run_stop_reason})" if run_stop_reason else ""
 
     return f"""JobSpy-V2 Run Report
 {"=" * 50}
@@ -127,6 +146,7 @@ Mode:            {mode.upper()} ({status})
 Date:            {date_str}
 Duration:        {minutes:.1f} minutes ({duration_seconds:.0f}s)
 Boards queried:  {boards_str}
+Stop reason:     {run_stop_reason or "completed"}
 
 Scraping Summary
 {"-" * 50}
@@ -140,6 +160,8 @@ Email Summary
 Emails sent:         {emails_sent}
 Emails failed:       {emails_failed}
 No valid recipients: {skipped_no_recip}
+Skipped (timeout):   {skipped_timeout}
+Skipped (daily quo): {skipped_daily_quota}
 
 Dedup Breakdown
 {"-" * 50}

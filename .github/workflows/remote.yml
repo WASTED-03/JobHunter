@@ -27,7 +27,7 @@ concurrency:
 jobs:
   remote:
     runs-on: ubuntu-latest
-    timeout-minutes: 480  # Increased to 8 hours for large scrapes
+    timeout-minutes: 350  # 5h 50min - stop gracefully before GitHub's 6h hard limit
 
     steps:
       - uses: actions/checkout@v4
@@ -93,11 +93,11 @@ jobs:
           REPORT_EMAIL: ${{ secrets.REPORT_EMAIL }}
           # --- Remote config ---
           REMOTE_SEARCH_TERMS: ${{ secrets.REMOTE_SEARCH_TERMS }}
-          REMOTE_LOCATION: ${{ secrets.REMOTE_LOCATION }}
+          REMOTE_LOCATIONS: ${{ secrets.REMOTE_LOCATIONS }}
           REMOTE_IS_REMOTE: ${{ secrets.REMOTE_IS_REMOTE }}
           REMOTE_JOB_TYPE: ${{ secrets.REMOTE_JOB_TYPE }}
           REMOTE_JOB_BOARDS: ${{ secrets.REMOTE_JOB_BOARDS }}
-          REMOTE_COUNTRY_INDEED: ${{ secrets.REMOTE_COUNTRY_INDEED }}
+          REMOTE_COUNTRIES_INDEED: ${{ secrets.REMOTE_COUNTRIES_INDEED }}
           REMOTE_RESULTS_WANTED: ${{ secrets.REMOTE_RESULTS_WANTED }}
           REMOTE_MAX_EMAILS_PER_DAY: ${{ secrets.REMOTE_MAX_EMAILS_PER_DAY }}
           # --- Email settings ---
@@ -106,7 +106,7 @@ jobs:
           EMAIL_INTERVAL_SECONDS: ${{ secrets.EMAIL_INTERVAL_SECONDS }}
           APPLICATION_SENDER_NAME: ${{ secrets.APPLICATION_SENDER_NAME }}
           FALLBACK_EMAIL_SUBJECT: ${{ secrets.FALLBACK_EMAIL_SUBJECT }}
-          FALLBACK_EMAIL_BODY: ${{ secrets.FALLBACK_EMAIL_BODY }}
+          FALLBACK_EMAIL_BODY: ${{ secrets.REMOTE_FALLBACK_EMAIL_BODY }}
           # --- Filter ---
           REJECT_TITLES: ${{ secrets.REJECT_TITLES }}
           EMAIL_FILTER_PATTERNS: ${{ secrets.EMAIL_FILTER_PATTERNS }}
