@@ -44,6 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         settings = settings.model_copy(update={"dry_run": True})
 
+    # Suppress Pydantic deprecation warnings from jobspy library
+    import warnings
+
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic")
+
     # Configure logging
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
