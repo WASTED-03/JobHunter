@@ -17,7 +17,7 @@ EMAIL_REGEX: re.Pattern[str] = re.compile(
     r"[a-zA-Z0-9]"  # Local part must start with alphanumeric
     r"[a-zA-Z0-9._%+-]*"  # Can contain these
     r"@[a-zA-Z0-9]"  # Domain must start with alphanumeric
-    r"[a-zA-Z0-9.-]*"  # Can contain these (but no consecutive dots handled by negative lookahead)
+    r"[a-zA-Z0-9.-]*"  # Can contain these (consecutive dots handled by lookahead)
     r"\.[a-zA-Z]{2,}$"  # TLD: 2+ chars
 )
 
@@ -72,7 +72,7 @@ HARDCODED_EMAIL_BLOCKLIST: list[re.Pattern[str]] = [
 
 # Suspicious patterns in email (not valid company emails)
 SUSPICIOUS_EMAIL_PATTERNS: list[re.Pattern[str]] = [
-    # Patterns like vs00825391@... (employee IDs in email - 4+ digits after possible prefix)
+    # Patterns like vs00825391@... (employee IDs — 4+ digits after possible prefix)
     re.compile(r"^[a-zA-Z]{0,2}\d{4,}@", re.IGNORECASE),
     # Patterns like _name@ or -name@ (underscore/hyphen prefix at start)
     re.compile(r"^[_+-]\w+@", re.IGNORECASE),
@@ -218,3 +218,57 @@ def get_valid_recipients(
     if not filter_patterns:
         return valid
     return [e for e in valid if not is_filtered_email(e, filter_patterns)]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DNS-based deliverability validation via emval (Rust-backed, fast)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def validate_email_deliverable(email: str) -> bool:
+    """Return True if *email* passes DNS/MX deliverability check via emval.
+
+    Uses emval with deliverable_address=True which performs a DNS MX record
+    lookup to confirm the domain can receive mail. Does NOT do an SMTP
+    handshake — safe for bulk use with no IP blacklist risk.
+
+    Returns False for invalid/undeliverable addresses (emval.InvalidEmailError).
+    Returns False conservatively when DNS lookup raises any other error (e.g.
+    timeout) so we don't silently drop emails during transient DNS failures.
+    """
+    try:
+        import emval  # type: ignore[import]
+
+        emval.validate_email(email, deliverable_address=True)
+        return True
+    except Exception:
+        # emval.InvalidEmailError  → undeliverable / bad syntax
+        # Any other exception      → DNS timeout, network issue, etc.
+        # Conservative choice: treat non-InvalidEmailError failures as invalid
+        # to avoid sending to domains with missing MX records.
+        return False
+
+
+def filter_deliverable_emails(
+    emails: list[str],
+) -> tuple[list[str], list[str]]:
+    """Filter a list of emails using DNS/MX deliverability check (emval).
+
+    Returns ``(valid_emails, invalid_emails)`` — two separate lists so callers
+    can count filtered-out addresses and include them in run statistics without
+    re-scanning.
+
+    Example::
+
+        valid, invalid = filter_deliverable_emails(["a@real.com", "b@fake.xyz"])
+        # valid   → ["a@real.com"]
+        # invalid → ["b@fake.xyz"]
+    """
+    valid: list[str] = []
+    invalid: list[str] = []
+    for email in emails:
+        if validate_email_deliverable(email):
+            valid.append(email)
+        else:
+            invalid.append(email)
+    return valid, invalid

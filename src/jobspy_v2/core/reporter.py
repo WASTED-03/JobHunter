@@ -53,6 +53,7 @@ def send_report(
         "skipped_no_recipients": str(stats.get("skipped_no_recipients", 0)),
         "skipped_timeout": str(stats.get("skipped_timeout", 0)),
         "skipped_daily_quota": str(stats.get("skipped_daily_quota", 0)),
+        "invalid_emails_filtered": str(stats.get("invalid_emails_filtered", 0)),
         "filtered_title": str(stats.get("filtered_title", 0)),
         "filtered_email": str(stats.get("filtered_email", 0)),
         "boards_queried": boards_str,
@@ -126,18 +127,17 @@ def _build_body(
     emails_sent = stats.get("emails_sent", 0)
     emails_failed = stats.get("emails_failed", 0)
     skipped_exact = stats.get("skipped_dedup_exact", 0)
-    skipped_domain = stats.get("skipped_dedup_domain", 0)
     skipped_company = stats.get("skipped_dedup_company", 0)
     skipped_no_recip = stats.get("skipped_no_recipients", 0)
     skipped_timeout = stats.get("skipped_timeout", 0)
     skipped_daily_quota = stats.get("skipped_daily_quota", 0)
+    invalid_emails_filtered = stats.get("invalid_emails_filtered", 0)
     filtered_title = stats.get("filtered_title", 0)
     filtered_email = stats.get("filtered_email", 0)
     run_stop_reason = stats.get("run_stop_reason", "")
+    pending_count = stats.get("pending_carried_over", 0)
 
-    total_dedup = skipped_exact + skipped_domain + skipped_company
-
-    stop_reason_str = f" ({run_stop_reason})" if run_stop_reason else ""
+    total_dedup = skipped_exact + skipped_company
 
     return f"""JobSpy-V2 Run Report
 {"=" * 50}
@@ -150,27 +150,33 @@ Stop reason:     {run_stop_reason or "completed"}
 
 Scraping Summary
 {"-" * 50}
-Total scraped:       {total_scraped}
-Filtered (no email): {filtered_email}
-Filtered (title):    {filtered_title}
-Jobs with emails:    {jobs_with_emails}
+Total scraped:             {total_scraped}
+Filtered (no email):       {filtered_email}
+Filtered (title):          {filtered_title}
+Jobs with emails:          {jobs_with_emails}
 
 Email Summary
 {"-" * 50}
-Emails sent:         {emails_sent}
-Emails failed:       {emails_failed}
-No valid recipients: {skipped_no_recip}
-Skipped (timeout):   {skipped_timeout}
-Skipped (daily quo): {skipped_daily_quota}
+Emails sent:               {emails_sent}
+Emails failed:             {emails_failed}
+Success rate:              {_calc_rate(emails_sent, emails_sent + emails_failed)}
+
+Skipped — Reasons
+{"-" * 50}
+No valid recipients:       {skipped_no_recip}
+Invalid emails (DNS):      {invalid_emails_filtered}
+Timed out (not processed): {skipped_timeout}
+Daily quota hit:           {skipped_daily_quota}
+
+Pending Jobs
+{"-" * 50}
+Pending carry-over:        {pending_count}
 
 Dedup Breakdown
 {"-" * 50}
-Exact email match:   {skipped_exact}
-Domain cooldown:     {skipped_domain}
-Company cooldown:    {skipped_company}
-Total dedup skipped: {total_dedup}
-
-Success rate:        {_calc_rate(emails_sent, emails_sent + emails_failed)}
+Exact email match:         {skipped_exact}
+Company cooldown:          {skipped_company}
+Total dedup skipped:       {total_dedup}
 """
 
 

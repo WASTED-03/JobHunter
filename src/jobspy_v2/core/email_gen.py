@@ -46,6 +46,7 @@ def generate_email(
     job_description: str,
     settings: Settings,
     context: str = "",
+    workflow_mode: str = "",
 ) -> EmailResult:
     """
     Generate a personalised cold email for a job posting.
@@ -55,12 +56,15 @@ def generate_email(
     Args:
         context: Pre-loaded applicant profile text. When empty, the LLM path
                  loads it from ``settings.context_file_path`` as a fallback.
+        workflow_mode: ``"onsite"`` or ``"remote"`` — selects the matching
+                       fallback body from settings when available.
     """
     if settings.email_generator_mode == "fallback":
         return _generate_fallback(
             job_title=job_title,
             company=company,
             settings=settings,
+            workflow_mode=workflow_mode,
         )
 
     try:
@@ -77,6 +81,7 @@ def generate_email(
             job_title=job_title,
             company=company,
             settings=settings,
+            workflow_mode=workflow_mode,
         )
 
 
@@ -153,6 +158,7 @@ def _generate_fallback(
     job_title: str,
     company: str,
     settings: Settings,
+    workflow_mode: str = "",
 ) -> EmailResult:
     """Generate email from fallback template in settings."""
     replacements = _build_replacements(settings)
@@ -161,7 +167,13 @@ def _generate_fallback(
     for key, value in replacements.items():
         subject = subject.replace(f"{{{key}}}", value)
 
-    body = settings.fallback_email_body
+    # Pick workflow-specific body; fall back to generic body.
+    if workflow_mode == "onsite" and settings.onsite_fallback_email_body:
+        body = settings.onsite_fallback_email_body
+    elif workflow_mode == "remote" and settings.remote_fallback_email_body:
+        body = settings.remote_fallback_email_body
+    else:
+        body = settings.fallback_email_body
     for key, value in replacements.items():
         body = body.replace(f"{{{key}}}", value)
 

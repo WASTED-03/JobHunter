@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, date
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jobspy_v2.config import Settings
 from jobspy_v2.core.dedup import Deduplicator
 from jobspy_v2.core.email_gen import generate_email
-from jobspy_v2.core.email_sender import send_email, is_gmail_quota_error
+from jobspy_v2.core.email_sender import is_gmail_quota_error, send_email
 from jobspy_v2.core.reporter import send_report
 from jobspy_v2.core.scraper import scrape_jobs
 from jobspy_v2.storage import create_storage_backend
-from jobspy_v2.utils.email_utils import get_valid_recipients
+from jobspy_v2.utils.email_utils import filter_deliverable_emails, get_valid_recipients
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -105,6 +105,7 @@ class BaseWorkflow:
             "skipped_no_recipients": 0,
             "skipped_timeout": 0,
             "skipped_daily_quota": 0,
+            "invalid_emails_filtered": 0,
             "filtered_title": 0,
             "filtered_email": 0,
             "boards_queried": [],
@@ -280,6 +281,21 @@ class BaseWorkflow:
                 stats["skipped_no_recipients"] += 1
                 continue
 
+            # ── Step 1b: DNS/MX deliverability filter (emval) ─────────
+            recipients, dns_invalid = filter_deliverable_emails(recipients)
+            if dns_invalid:
+                stats["invalid_emails_filtered"] += len(dns_invalid)
+                logger.debug(
+                    "Filtered %d undeliverable email(s) for %s: %s",
+                    len(dns_invalid),
+                    company,
+                    dns_invalid,
+                )
+            if not recipients:
+                self._update_row_status(row_number, "Skipped", "invalid_email_dns", "")
+                stats["skipped_no_recipients"] += 1
+                continue
+
             stats["jobs_with_emails"] += 1
             primary_email = recipients[0]
             domain = primary_email.split("@")[1] if "@" in primary_email else ""
@@ -300,6 +316,7 @@ class BaseWorkflow:
                 job_description=description,
                 settings=self.settings,
                 context=self._context,
+                workflow_mode=self.mode,
             )
 
             # ── Step 4: Send (or dry-run) ─────────────────────────────
@@ -498,6 +515,21 @@ class BaseWorkflow:
                 stats["skipped_no_recipients"] += 1
                 continue
 
+            # DNS/MX deliverability filter (emval)
+            recipients, dns_invalid = filter_deliverable_emails(recipients)
+            if dns_invalid:
+                stats["invalid_emails_filtered"] += len(dns_invalid)
+                logger.debug(
+                    "Filtered %d undeliverable email(s) for %s: %s",
+                    len(dns_invalid),
+                    company,
+                    dns_invalid,
+                )
+            if not recipients:
+                self._update_row_status(row_number, "Skipped", "invalid_email_dns", "")
+                stats["skipped_no_recipients"] += 1
+                continue
+
             stats["jobs_with_emails"] += 1
             primary_email = recipients[0]
             domain = primary_email.split("@")[1] if "@" in primary_email else ""
@@ -518,6 +550,7 @@ class BaseWorkflow:
                 job_description=description,
                 settings=self.settings,
                 context=self._context,
+                workflow_mode=self.mode,
             )
 
             # Send or dry-run

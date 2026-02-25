@@ -57,8 +57,8 @@ job scraping.
 - **Resume attachment** -- sends your PDF resume with every outreach email
 - **Google Sheets storage** -- full audit trail with separate worksheets for
   scraped jobs, sent emails, and run statistics
-- **Smart deduplication** -- exact match, domain cooldown, and company cooldown
-  prevent duplicate outreach
+- **Smart deduplication** -- exact match and company cooldown prevent duplicate outreach
+- **DNS email validation** -- filters non-existent mailboxes using emval (Rust-based DNS/MX lookup) before sending, reducing mailer daemon bounces
 - **Title and email filtering** -- skip irrelevant job titles and generic email
   addresses automatically
 - **Dry run mode** -- test the full pipeline without sending any emails
@@ -477,7 +477,8 @@ New repository secret**. Add each of the following:
 |-------------|-------|
 | `APPLICATION_SENDER_NAME` | Your name as it appears in the From field |
 | `FALLBACK_EMAIL_SUBJECT` | Fallback subject line if LLM fails |
-| `FALLBACK_EMAIL_BODY` | Fallback email body if LLM fails |
+| `ONSITE_FALLBACK_EMAIL_BODY` | Fallback email body for onsite workflow if LLM fails |
+| `REMOTE_FALLBACK_EMAIL_BODY` | Fallback email body for remote workflow if LLM fails |
 | `REJECT_TITLES` | Comma-separated title filter patterns |
 | `EMAIL_FILTER_PATTERNS` | Comma-separated email filter patterns |
 | `MIN_EMAIL_WORDS` | `120` |
@@ -501,11 +502,11 @@ New repository secret**. Add each of the following:
 | Secret Name | Example Value |
 |-------------|---------------|
 | `REMOTE_SEARCH_TERMS` | `machine learning,AI engineer` |
-| `REMOTE_LOCATION` | `USA` |
+| `REMOTE_LOCATIONS` | `USA,UK,Canada` |
 | `REMOTE_IS_REMOTE` | `true` |
 | `REMOTE_JOB_TYPE` | `fulltime` |
 | `REMOTE_JOB_BOARDS` | `indeed,glassdoor,linkedin` |
-| `REMOTE_COUNTRY_INDEED` | `USA` |
+| `REMOTE_COUNTRIES_INDEED` | `USA,UK` |
 | `REMOTE_RESULTS_WANTED` | `300` |
 | `REMOTE_MAX_EMAILS_PER_DAY` | `50` |
 
@@ -652,16 +653,12 @@ Customize with `EMAIL_FILTER_PATTERNS` in your `.env`.
 
 ### Deduplication
 
-Three levels of deduplication prevent repeat outreach:
+Two levels of deduplication prevent repeat outreach:
 
-| Rule | Default | Description |
-|------|---------|-------------|
-| Exact match | Always on | Never send to the same email + company + job title combination twice |
-| Domain cooldown | 5 days | Wait N days before emailing anyone at the same domain again |
-| Company cooldown | 1 day | Wait N days before emailing anyone at the same company again |
-
-Cooldown values (5 days for domain, 1 day for company) are defaults defined in
-`src/jobspy_v2/core/dedup.py`. To change them, edit the constants in that file.
+| Rule | Description |
+|------|-------------|
+| Exact email match | Never send to the same email address twice (permanent) |
+| Company cooldown | Never email two different people at the same company on the same day |
 
 ---
 

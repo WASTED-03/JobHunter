@@ -59,6 +59,7 @@ RUN_STATS_COLUMNS: tuple[str, ...] = (
     "skipped_no_recipients",
     "skipped_timeout",
     "skipped_daily_quota",
+    "invalid_emails_filtered",
     "filtered_title",
     "filtered_email",
     "boards_queried",

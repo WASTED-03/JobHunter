@@ -21,7 +21,7 @@ warnings.filterwarnings(
     category=DeprecationWarning,
 )
 
-from jobspy_v2.config import get_settings
+from jobspy_v2.config import get_settings  # noqa: E402
 
 
 def _build_parser() -> argparse.ArgumentParser:

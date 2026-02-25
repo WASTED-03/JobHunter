@@ -91,7 +91,11 @@ class Settings(BaseSettings):
 
     # -- Fallback Email Template --------------------------------------------
     fallback_email_subject: str = "Software Engineer - Exploring Opportunities"
-    fallback_email_body: str = ""
+    # Workflow-specific fallback bodies (preferred); fallback_email_body kept for
+    # backward-compatibility — used when the workflow-specific field is empty.
+    onsite_fallback_email_body: str = ""
+    remote_fallback_email_body: str = ""
+    fallback_email_body: str = ""  # legacy / generic fallback
 
     # -- Job Filter ---------------------------------------------------------
     reject_titles: CsvList = Field(default_factory=list)
@@ -120,7 +124,7 @@ class Settings(BaseSettings):
     daily_total_emails_limit: int = 500
 
     # -- Time Limits ---------------------------------------------------------
-    # Max runtime in minutes before gracefully stopping (default 5h 50min to leave 10min buffer)
+    # Max runtime in minutes before gracefully stopping (5h 50min = 10min buffer)
     max_runtime_minutes: int = 350
 
     # -- Remote Settings ----------------------------------------------------
