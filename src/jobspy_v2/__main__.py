@@ -7,7 +7,19 @@ import logging
 import sys
 import warnings
 
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic")
+# jobspy calls job.dict() internally which triggers PydanticDeprecatedSince20.
+# The warning fires from jobspy's worker threads, so module="pydantic" doesn't
+# match (that filters by caller module, not by warning origin). Use message= instead.
+warnings.filterwarnings(
+    "ignore",
+    message=".*`dict` method is deprecated.*",
+    category=DeprecationWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*use `model_dump` instead.*",
+    category=DeprecationWarning,
+)
 
 from jobspy_v2.config import get_settings
 

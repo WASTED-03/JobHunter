@@ -109,3 +109,4 @@ jobs:
           # --- Filter ---
           REJECT_TITLES: ${{ secrets.REJECT_TITLES }}
           EMAIL_FILTER_PATTERNS: ${{ secrets.EMAIL_FILTER_PATTERNS }}
+          PYTHONWARNINGS: "ignore::DeprecationWarning"
