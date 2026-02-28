@@ -78,7 +78,7 @@ jobs:
           CONTACT_CODOLIO: ${{ secrets.CONTACT_CODOLIO }}
           RESUME_DRIVE_LINK: ${{ secrets.RESUME_DRIVE_LINK }}
           # --- Files (decoded above) ---
-          RESUME_FILE_PATH: ArinBalyan.pdf
+          RESUME_FILE_PATH: ArnavAshokResume.pdf
           CONTEXT_FILE_PATH: contexts/profile.md
           # --- Storage ---
           STORAGE_BACKEND: ${{ secrets.STORAGE_BACKEND }}
@@ -102,6 +102,7 @@ jobs:
           FALLBACK_EMAIL_SUBJECT: ${{ secrets.FALLBACK_EMAIL_SUBJECT }}
           FALLBACK_EMAIL_BODY: ${{ secrets.ONSITE_FALLBACK_EMAIL_BODY }}
           # --- Filter ---
+
           REJECT_TITLES: ${{ secrets.REJECT_TITLES }}
           EMAIL_FILTER_PATTERNS: ${{ secrets.EMAIL_FILTER_PATTERNS }}
           PYTHONWARNINGS: "ignore::DeprecationWarning"
