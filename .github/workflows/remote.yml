@@ -43,11 +43,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev
 
-      - name: Decrypt resume PDF
-        run: |
-          # Resume is committed as ArinBalyan.pdf.gpg
-          gpg --quiet --batch --yes --decrypt --passphrase="${{ secrets.RESUME_DECRYPT_PASS }}" --output resume.pdf ArinBalyan.pdf.gpg
-
       - name: Decode applicant context from secret
         run: |
           mkdir -p contexts
@@ -83,7 +78,7 @@ jobs:
           CONTACT_CODOLIO: ${{ secrets.CONTACT_CODOLIO }}
           RESUME_DRIVE_LINK: ${{ secrets.RESUME_DRIVE_LINK }}
           # --- Files (decoded above) ---
-          RESUME_FILE_PATH: resume.pdf
+          RESUME_FILE_PATH: ArinBalyan.pdf
           CONTEXT_FILE_PATH: contexts/profile.md
           # --- Storage ---
           STORAGE_BACKEND: ${{ secrets.STORAGE_BACKEND }}

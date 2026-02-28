@@ -245,7 +245,7 @@ Open `.env` in your editor. Here is what to fill in, grouped by priority:
 | Variable | Default | What It Does |
 |----------|---------|--------------|
 | `CONTEXT_FILE_PATH` | `contexts/profile.md` | Path to your applicant profile from Step 2 |
-| `RESUME_FILE_PATH` | `resume.pdf` | Path to your resume PDF (see Step 5) |
+| `RESUME_FILE_PATH` | `ArinBalyan.pdf` | Path to your resume PDF (see Step 5) |
 | `REPORT_EMAIL` | Same as `GMAIL_EMAIL` | Where to send run summary reports |
 | `STORAGE_BACKEND` | `sheets` | Use `csv` for local testing without Google Sheets |
 | `DRY_RUN` | `false` | Set to `true` to test without sending emails |
@@ -264,20 +264,35 @@ See `.env.example` for the complete list with descriptions.
 
 ### Step 5: Add Your Resume
 
-Place your resume PDF in the project root:
+Place your resume PDF in the project root with its real filename:
 
 ```bash
-cp /path/to/YourResume.pdf resume.pdf
+cp /path/to/YourResume.pdf ArinBalyan.pdf
 ```
 
-Or if your file has a different name, set `RESUME_FILE_PATH` in `.env`:
+The file is tracked in git (`.gitignore` has an explicit `!ArinBalyan.pdf`
+exception), so it is committed with the repo and available in GitHub Actions
+without any decryption step. It gets attached to every outreach email.
+
+If you use a different filename, update `RESUME_FILE_PATH` in `.env` and add a
+matching exception to `.gitignore`:
 
 ```
-RESUME_FILE_PATH=ArinBalyan.pdf
+# .env
+RESUME_FILE_PATH=YourResume.pdf
 ```
 
-This file is gitignored and never committed. It gets attached to every outreach
-email.
+```gitignore
+# .gitignore
+!YourResume.pdf
+```
+
+To update your resume in the future, replace the file and push:
+
+```bash
+cp /path/to/updated-resume.pdf ArinBalyan.pdf
+git add ArinBalyan.pdf && git commit -m "chore: update resume" && git push
+```
 
 ### Step 6: Test With a Dry Run
 
@@ -402,14 +417,10 @@ git push -u origin main
 
 **2. Generate base64 strings for your private files.**
 
-These files cannot be committed to git. You will paste the base64 output into
-GitHub secrets.
+Your resume PDF is committed directly to the repo (see Step 5), so only the
+applicant profile and Google credentials need to be base64-encoded as secrets.
 
 ```bash
-# Resume PDF
-base64 -w 0 resume.pdf
-# Copy the ENTIRE output (it will be one long line)
-
 # Applicant profile
 base64 -w 0 contexts/profile.md
 # Copy the ENTIRE output
@@ -439,7 +450,6 @@ New repository secret**. Add each of the following:
 
 | Secret Name | Value |
 |-------------|-------|
-| `RESUME_DECRYPT_PASS` | Passphrase used to encrypt your resume |
 | `CONTEXT_BASE64` | Base64 of your `contexts/profile.md` (from step 2) |
 
 **Identity:**
@@ -524,18 +534,19 @@ times in `.github/workflows/onsite.yml` and `remote.yml`.
 
 #### How File Secrets Work
 
-The workflows handle private files differently to keep them secure:
+The workflows handle private files as follows:
 
-1. **Resume (Large File):**
-   - You encrypt your resume locally using GPG:
+1. **Resume (PDF — committed directly):**
+   - Your resume PDF (`ArinBalyan.pdf`) is committed to the repo. The
+     `.gitignore` has an explicit `!ArinBalyan.pdf` exception so git tracks it.
+   - The workflow reads it directly from the checkout — no decryption step.
+   - To update your resume, replace the file locally and push:
      ```bash
-     gpg --symmetric --cipher-algo AES256 ArinBalyan.pdf
+     cp /path/to/new-resume.pdf ArinBalyan.pdf
+     git add ArinBalyan.pdf && git commit -m "chore: update resume" && git push
      ```
-   - Commit the encrypted `ArinBalyan.pdf.gpg` file to your repo.
-   - Store the passphrase as a GitHub Secret: `RESUME_DECRYPT_PASS`.
-   - The workflow decrypts it at runtime.
-
-   > **Note:** The included `ArinBalyan.pdf.gpg` is encrypted with the passphrase `jobhunter`. You should delete it and commit your own encrypted resume.
+   - If you rename the file, update `RESUME_FILE_PATH` in both workflow files
+     and add a matching `!YourFilename.pdf` line to `.gitignore`.
 
 2. **Applicant Context (Text File):**
    - Encode your `contexts/profile.md` to base64:
@@ -545,7 +556,7 @@ The workflows handle private files differently to keep them secure:
    - Store the output as a GitHub Secret: `CONTEXT_BASE64`.
    - The workflow decodes it to disk at runtime.
 
-These files exist only for the duration of the workflow run.
+The context file exists only for the duration of the workflow run.
 
 ### Local Cron
 

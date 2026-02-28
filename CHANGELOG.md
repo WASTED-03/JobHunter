@@ -7,6 +7,24 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- Resume is now committed directly to the repository (`ArinBalyan.pdf`) instead
+  of being stored as a GPG-encrypted file. The `.gitignore` has an explicit
+  `!ArinBalyan.pdf` exception so git tracks it. To update the resume, replace
+  the file and push — no encryption or passphrase required.
+- Removed the "Decrypt resume PDF" step from both GitHub Actions workflows
+  (`onsite.yml`, `remote.yml`). `RESUME_FILE_PATH` now points directly to
+  `ArinBalyan.pdf` in the checkout.
+- Default value of `resume_file_path` in `Settings` updated from `resume.pdf`
+  to `ArinBalyan.pdf`.
+- Removed `RESUME_DECRYPT_PASS` secret requirement. The secret can be deleted
+  from GitHub repository settings.
+
+---
+
 ## [1.0.0] - 2025-02-14
 
 ### Added
